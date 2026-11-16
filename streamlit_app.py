@@ -14,7 +14,7 @@ from streamlit_folium import st_folium
 
 
 DIRETORIO_PROJETO = Path(__file__).resolve().parent
-CAMINHO_RESULTADOS = DIRETORIO_PROJETO / 'votacao_secao_2026_BR.csv'
+CAMINHO_RESULTADOS = DIRETORIO_PROJETO / 'locais_secoes_divinopolis.csv'
 CAMINHO_LOCAIS = DIRETORIO_PROJETO / 'locais_secoes_divinopolis_com_bairros.csv'
 # Limite municipal oficial do IBGE para Divinópolis (código 3122306).
 CAMINHO_LIMITE_MUNICIPAL = DIRETORIO_PROJETO / 'limite_municipal_divinopolis.geojson'

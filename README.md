@@ -1,5 +1,3 @@
-# Atividade_Folium
-
 ## Ambiente Conda
 
 Com o Conda ou o Miniforge instalado, ative o ambiente do projeto:

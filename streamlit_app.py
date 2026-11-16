@@ -14,7 +14,7 @@ from streamlit_folium import st_folium
 
 
 DIRETORIO_PROJETO = Path(__file__).resolve().parent
-CAMINHO_RESULTADOS = DIRETORIO_PROJETO / 'locais_secoes_divinopolis.csv'
+CAMINHO_RESULTADOS = DIRETORIO_PROJETO / 'votacao_secao_2026_Divinopolis.csv'
 CAMINHO_LOCAIS = DIRETORIO_PROJETO / 'locais_secoes_divinopolis_com_bairros.csv'
 # Limite municipal oficial do IBGE para Divinópolis (código 3122306).
 CAMINHO_LIMITE_MUNICIPAL = DIRETORIO_PROJETO / 'limite_municipal_divinopolis.geojson'
@@ -28,7 +28,7 @@ def carregar_dados(
     assinatura_resultados: tuple[int, int],
     assinatura_locais: tuple[int, int],
 ):
-    df = pd.read_csv(caminho_resultados, sep=';', encoding='latin-1')
+    df = pd.read_csv(caminho_resultados, sep=';', encoding='utf-8-sig')
     colunas_interesse = [
         'ANO_ELEICAO', 'NR_TURNO', 'NR_ZONA', 'NR_SECAO', 'NM_MUNICIPIO',
         'NM_VOTAVEL', 'DS_CARGO', 'QT_VOTOS', 'NM_LOCAL_VOTACAO',
@@ -64,12 +64,17 @@ def carregar_dados(
 
     resultados_presidente['NR_TURNO'] = pd.to_numeric(resultados_presidente['NR_TURNO'], errors='coerce')
     resultados_presidente['QT_VOTOS'] = pd.to_numeric(resultados_presidente['QT_VOTOS'], errors='coerce').fillna(0)
-    nomes_votaveis = resultados_presidente['NM_VOTAVEL'].astype('string').str.strip().str.upper()
     resultados_presidente = resultados_presidente[
         (resultados_presidente['ANO_ELEICAO'] == ano_eleicao)
         & resultados_presidente['NR_TURNO'].isin([1, 2])
-        & ~nomes_votaveis.isin(['VOTO BRANCO', 'VOTO NULO'])
         & resultados_presidente['NM_VOTAVEL'].notna()
+    ].copy()
+    nomes_votaveis = resultados_presidente['NM_VOTAVEL'].astype('string').str.strip().str.upper()
+    votos_brancos_nulos = resultados_presidente[
+        nomes_votaveis.isin(['VOTO BRANCO', 'VOTO NULO'])
+    ].copy()
+    resultados_presidente = resultados_presidente[
+        ~nomes_votaveis.isin(['VOTO BRANCO', 'VOTO NULO'])
     ].copy()
     if resultados_presidente.empty:
         raise ValueError(f'Não há votos nominais para presidente em {ano_eleicao}.')
@@ -84,7 +89,7 @@ def carregar_dados(
         raise ValueError(f'Colunas ausentes no arquivo de locais: {sorted(colunas_local_ausentes)}')
 
     colunas_chave_local = ['NR_LOCAL_VOTACAO', '_nome_local_chave', '_endereco_local_chave']
-    for tabela in (locais_mapa, resultados_presidente):
+    for tabela in (locais_mapa, resultados_presidente, votos_brancos_nulos):
         tabela['NR_LOCAL_VOTACAO'] = (
             tabela['NR_LOCAL_VOTACAO'].astype('string').str.strip().str.replace(r'\.0$', '', regex=True)
         )
@@ -122,7 +127,14 @@ def carregar_dados(
 
 
     chaves_secao = ['NR_ZONA', 'NR_SECAO'] + colunas_chave_local
-    return resultados_presidente, locais_mapa, colunas_chave_local, chaves_secao, ano_eleicao
+    return (
+        resultados_presidente,
+        votos_brancos_nulos,
+        locais_mapa,
+        colunas_chave_local,
+        chaves_secao,
+        ano_eleicao,
+    )
 
 
 @st.cache_data(show_spinner='Carregando limite municipal do IBGE...')
@@ -144,9 +156,14 @@ assinatura_resultados = (CAMINHO_RESULTADOS.stat().st_mtime_ns, CAMINHO_RESULTAD
 assinatura_locais = (CAMINHO_LOCAIS.stat().st_mtime_ns, CAMINHO_LOCAIS.stat().st_size)
 assinatura_limite = (CAMINHO_LIMITE_MUNICIPAL.stat().st_mtime_ns, CAMINHO_LIMITE_MUNICIPAL.stat().st_size)
 cache_version = (*assinatura_resultados, *assinatura_locais, *assinatura_limite)
-resultados_presidente, locais_mapa, colunas_chave_local, chaves_secao, ano_eleicao = carregar_dados(
-    str(CAMINHO_RESULTADOS), str(CAMINHO_LOCAIS), assinatura_resultados, assinatura_locais
-)
+(
+    resultados_presidente,
+    votos_brancos_nulos,
+    locais_mapa,
+    colunas_chave_local,
+    chaves_secao,
+    ano_eleicao,
+) = carregar_dados(str(CAMINHO_RESULTADOS), str(CAMINHO_LOCAIS), assinatura_resultados, assinatura_locais)
 limite_municipal = carregar_limite_municipal(str(CAMINHO_LIMITE_MUNICIPAL), assinatura_limite)
 candidatos = sorted(resultados_presidente['NM_VOTAVEL'].dropna().unique())
 paleta = [
@@ -469,10 +486,21 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
         .reindex(columns=candidatos_turno, fill_value=0)
         .fillna(0)
     )
+    votos_brancos_nulos_por_secao = votos_brancos_nulos.groupby(
+        chaves_secao + ['NR_TURNO', 'NM_VOTAVEL']
+    )['QT_VOTOS'].sum()
 
     for _, secao in secoes.iterrows():
         chave = tuple(secao[coluna] for coluna in chaves_secao)
         votos_secao = votos_por_secao.loc[chave]
+        linhas_brancos_nulos = ''.join(
+            '<tr><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
+                categoria,
+                formatar_votos(votos_brancos_nulos_por_secao.get((*chave, 1, categoria), 0)),
+                formatar_votos(votos_brancos_nulos_por_secao.get((*chave, 2, categoria), 0)),
+            )
+            for categoria in ('VOTO BRANCO', 'VOTO NULO')
+        )
         linhas_votos = ''.join(
             '<tr><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
                 escape(str(candidato)),
@@ -492,6 +520,9 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
             f'{formatar_votos(secao["votos_lider_secao"])} votos)</div>'
             f'<div class="votacao-regiao">Líder no local: {escape(str(secao["lider_local"]))} '
             f'({formatar_percentual(secao["percentual_lider_local"])})</div>'
+            '<div class="votacao-secao">Votos brancos e nulos</div>'
+            '<table><thead><tr><th>Tipo</th><th>1º turno</th><th>2º turno</th></tr></thead>'
+            f'<tbody>{linhas_brancos_nulos}</tbody></table>'
             '<table><thead><tr><th>Candidato</th><th>Votos</th><th>% válidos</th></tr></thead>'
             f'<tbody>{linhas_votos}</tbody></table>'
             '</div>'
@@ -502,8 +533,8 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
                 icon_size=(16, 16), icon_anchor=(8, 8),
                 html=f'<div style="width:14px;height:14px;border:2px solid #fff;border-radius:50%;background:{cor};box-shadow:0 1px 4px #333;"></div>',
             ),
-            tooltip=folium.Tooltip(
-                tooltip_html, sticky=True, opacity=0.97, class_name='votacao-tooltip'
+            popup=folium.Popup(
+                tooltip_html, max_width=420, max_height=380
             ),
         ).add_to(agrupamento)
 
@@ -517,7 +548,7 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
     <style>
       .votacao-tooltip { background: #fff; border: 0; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,.24); padding: 8px 10px; font: 12px/1.4 Arial,sans-serif; }
       .votacao-tooltip:before { display: none; }
-      .votacao-card { min-width: 290px; max-width: 390px; max-height: 320px; overflow-y: auto; padding: 10px 12px; border-radius: 8px; background: #fff; color: #202124; box-shadow: 0 2px 12px rgba(0,0,0,.28); font: 12px/1.4 Arial,sans-serif; }
+      .votacao-card { min-width: 290px; max-width: 390px; max-height: 340px; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; border-radius: 8px; background: #fff; color: #202124; box-shadow: 0 2px 12px rgba(0,0,0,.28); font: 12px/1.4 Arial,sans-serif; }
       .votacao-bairro { font-size: 15px; font-weight: 700; }
       .votacao-local { color: #555; margin: 2px 0; }
       .votacao-secao { font-weight: 700; margin: 6px 0; }

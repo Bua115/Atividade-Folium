@@ -109,8 +109,8 @@ def carregar_dados(
     ].nunique()
     if ids_locais_repetidos:
         st.warning(
-            f'{ids_locais_repetidos} números de local aparecem em endereços distintos; '
-            'as seções serão associadas pelo número, nome e endereço do turno correspondente.'
+            f'{ids_locais_repetidos} números de local aparecem em endereços distintos após alterações de endereço entre os turnos; '
+            'as seções foram associadas pelo número, nome e endereço do turno correspondente.'
         )
 
     locais_mapa['latitude'] = pd.to_numeric(locais_mapa['latitude'], errors='coerce')
@@ -493,21 +493,27 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
     for _, secao in secoes.iterrows():
         chave = tuple(secao[coluna] for coluna in chaves_secao)
         votos_secao = votos_por_secao.loc[chave]
-        linhas_brancos_nulos = ''.join(
-            '<tr><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
-                categoria,
-                formatar_votos(votos_brancos_nulos_por_secao.get((*chave, 1, categoria), 0)),
-                formatar_votos(votos_brancos_nulos_por_secao.get((*chave, 2, categoria), 0)),
+        votos_resultados = [
+            (str(candidato), votos_secao[candidato])
+            for candidato in candidatos_turno
+        ]
+        votos_resultados.extend(
+            (
+                rotulo,
+                votos_brancos_nulos_por_secao.get((*chave, turno, categoria), 0),
             )
-            for categoria in ('VOTO BRANCO', 'VOTO NULO')
+            for categoria, rotulo in (
+                ('VOTO BRANCO', 'Votos brancos'),
+                ('VOTO NULO', 'Votos nulos'),
+            )
         )
         linhas_votos = ''.join(
             '<tr><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
-                escape(str(candidato)),
-                formatar_votos(votos_secao[candidato]),
-                formatar_percentual(votos_secao[candidato] / secao['votos_validos']),
+                escape(resultado),
+                formatar_votos(votos),
+                formatar_percentual(votos / secao['votos_validos']),
             )
-            for candidato in sorted(candidatos_turno, key=lambda nome: (-votos_secao[nome], nome))
+            for resultado, votos in sorted(votos_resultados, key=lambda item: (-item[1], item[0]))
         )
         cor = cores_turno[secao['lider_secao']]
         tooltip_html = (
@@ -520,10 +526,8 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
             f'{formatar_votos(secao["votos_lider_secao"])} votos)</div>'
             f'<div class="votacao-regiao">Líder no local: {escape(str(secao["lider_local"]))} '
             f'({formatar_percentual(secao["percentual_lider_local"])})</div>'
-            '<div class="votacao-secao">Votos brancos e nulos</div>'
-            '<table><thead><tr><th>Tipo</th><th>1º turno</th><th>2º turno</th></tr></thead>'
-            f'<tbody>{linhas_brancos_nulos}</tbody></table>'
-            '<table><thead><tr><th>Candidato</th><th>Votos</th><th>% válidos</th></tr></thead>'
+            f'<div class="votacao-secao">Votos da seção · {turno}º turno</div>'
+            '<table><thead><tr><th>Resultado</th><th>Votos</th><th>% válidos</th></tr></thead>'
             f'<tbody>{linhas_votos}</tbody></table>'
             '</div>'
         )
@@ -532,6 +536,9 @@ def criar_mapa_turno(turno: int, cache_version: tuple[int, int, int, int, int, i
             icon=folium.DivIcon(
                 icon_size=(16, 16), icon_anchor=(8, 8),
                 html=f'<div style="width:14px;height:14px;border:2px solid #fff;border-radius:50%;background:{cor};box-shadow:0 1px 4px #333;"></div>',
+            ),
+            tooltip=folium.Tooltip(
+                tooltip_html, sticky=True, opacity=0.97, class_name='votacao-tooltip'
             ),
             popup=folium.Popup(
                 tooltip_html, max_width=420, max_height=380

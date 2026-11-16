@@ -1,0 +1,13 @@
+name: atividade-folium
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - folium>=0.20
+  - geopandas>=1.0
+  - ipykernel>=6.29
+  - pandas>=2.0
+  - shapely>=2.0
+  - streamlit>=1.30
+  - streamlit-folium>=0.18
+  - geopy>=2.5

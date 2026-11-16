@@ -2,7 +2,7 @@ name: atividade-folium
 channels:
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.14
   - folium>=0.20
   - geopandas>=1.0
   - ipykernel>=6.29

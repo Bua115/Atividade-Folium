@@ -10,7 +10,6 @@ import pandas as pd
 import streamlit as st
 from folium.plugins import MarkerCluster
 from shapely.geometry import Polygon
-from streamlit_folium import st_folium
 
 
 DIRETORIO_PROJETO = Path(__file__).resolve().parent
@@ -592,4 +591,9 @@ st.title(f'Resultados presidenciais de Divinópolis - {ano_eleicao}')
 st.caption('As áreas de Voronoi são aproximadas e recortadas ao limite municipal oficial do IBGE; não são limites de bairros.')
 turno = st.radio('Turno', options=[1, 2], format_func=lambda valor: f'{valor}º turno', horizontal=True)
 mapa = criar_mapa_turno(turno, cache_version)
-st_folium(mapa, height=720, width=1200, returned_objects=[])
+st.iframe(
+    mapa.get_root().render(),
+    height=720,
+    width=1200,
+    alt='Mapa interativo dos resultados eleitorais de Divinópolis',
+)

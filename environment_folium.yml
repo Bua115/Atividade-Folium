@@ -9,5 +9,4 @@ dependencies:
   - pandas>=2.0
   - shapely>=2.0
   - streamlit>=1.30
-  - streamlit-folium>=0.18
   - geopy>=2.5
